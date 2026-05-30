@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JobFit — AI CV Analyzer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .hidden { display: none !important; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { animation: spin 0.9s linear infinite; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+    .fade-in { animation: fadeIn 0.4s ease forwards; }
+    .score-ring { transition: stroke-dashoffset 1.2s cubic-bezier(0.4,0,0.2,1); }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-sans antialiased">
+
+  <!-- Header -->
+  <header class="border-b border-gray-800/60 bg-gray-900/40 backdrop-blur sticky top-0 z-10">
+    <div class="max-w-5xl mx-auto px-6 py-4 flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">JF</div>
+      <h1 class="text-xl font-bold tracking-tight">Job<span class="text-indigo-400">Fit</span></h1>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-6 py-10">
+
+    <!-- Intro -->
+    <div class="mb-8">
+      <h2 class="text-2xl font-semibold text-gray-100">Analyze your CV against any job</h2>
+      <p class="text-gray-400 mt-1 text-sm">Upload your CV and paste a job description — get a fit score, gap analysis, tailored summary, and a cover letter in seconds.</p>
+    </div>
+
+    <!-- Form -->
+    <form id="analyzeForm" class="space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        <!-- CV Upload -->
+        <div class="flex flex-col gap-2">
+          <label class="text-sm font-medium text-gray-300">CV / Résumé <span class="text-gray-500">(PDF)</span></label>
+          <div id="dropZone"
+            class="flex-1 min-h-[160px] border-2 border-dashed border-gray-700 rounded-xl p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:border-indigo-500 hover:bg-indigo-500/5 transition-all group"
+            onclick="document.getElementById('cvFile').click()">
+            <input type="file" id="cvFile" name="cv" accept=".pdf" class="hidden" />
+
+            <div id="uploadPrompt">
+              <svg class="w-10 h-10 text-gray-600 group-hover:text-indigo-400 mx-auto mb-3 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                  d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <p class="text-gray-400 text-sm font-medium">Click to upload PDF</p>
+              <p class="text-gray-600 text-xs mt-1">or drag &amp; drop</p>
+            </div>
+
+            <div id="uploadedFile" class="hidden flex-col items-center gap-2">
+              <svg class="w-10 h-10 text-green-400 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p id="fileName" class="text-gray-200 text-sm font-medium truncate max-w-[180px]"></p>
+              <p class="text-green-400 text-xs">Ready to analyze</p>
+            </div>
+          </div>
+
+          {% if cv_on_file %}
+          <p class="text-xs text-indigo-400 flex items-center gap-1">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Using saved CV: <span class="text-gray-300">{{ cv_name }}</span> — upload a new one to replace it
+          </p>
+          {% endif %}
+        </div>
+
+        <!-- Job Description -->
+        <div class="flex flex-col gap-2">
+          <label class="text-sm font-medium text-gray-300">Job Description</label>
+          <textarea id="jobDescription" name="job_description"
+            class="flex-1 min-h-[160px] bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-gray-200 text-sm resize-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 focus:outline-none placeholder-gray-600 transition-colors"
+            placeholder="Paste the full job description here — the more detail, the better the analysis…"></textarea>
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <button type="submit" id="submitBtn"
+        class="w-full bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors text-sm tracking-wide">
+        Analyze My CV
+      </button>
+    </form>
+
+    <!-- Error -->
+    <div id="errorBox" style="display:none" class="mt-6 bg-red-950/60 border border-red-800/60 rounded-xl px-5 py-4 flex items-start gap-3">
+      <svg class="w-5 h-5 text-red-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <p id="errorMsg" class="text-red-300 text-sm"></p>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loadingState" style="display:none" class="mt-12 flex flex-col items-center gap-5">
+      <div class="relative w-16 h-16">
+        <div class="w-16 h-16 rounded-full border-4 border-gray-800"></div>
+        <div class="spinner absolute inset-0 w-16 h-16 rounded-full border-4 border-transparent border-t-indigo-500"></div>
+      </div>
+      <div class="text-center">
+        <p class="text-gray-300 font-medium"> Reviewing your CV…</p>
+        <p class="text-gray-500 text-sm mt-1">This usually takes 10–20 seconds</p>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="results" style="display:none" class="mt-10 space-y-5">
+
+      <!-- Fit Score Card -->
+      <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
+        <h3 class="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-5">Fit Score</h3>
+        <div class="flex items-center gap-8">
+          <!-- SVG ring -->
+          <div class="relative w-24 h-24 shrink-0">
+            <svg class="w-24 h-24 -rotate-90" viewBox="0 0 96 96">
+              <circle cx="48" cy="48" r="38" fill="none" stroke="#1f2937" stroke-width="10"/>
+              <circle id="scoreRing" cx="48" cy="48" r="38" fill="none" stroke="#6366f1"
+                stroke-width="10" stroke-linecap="round"
+                stroke-dasharray="238.76"
+                stroke-dashoffset="238.76"/>
+            </svg>
+            <div class="absolute inset-0 flex items-center justify-center">
+              <span id="scoreText" class="text-2xl font-bold text-white">0%</span>
+            </div>
+          </div>
+
+          <!-- Reasoning bullets -->
+          <div class="flex-1">
+            <p class="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-3">Why this score</p>
+            <ul id="reasoningList" class="space-y-2"></ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Gaps -->
+      <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
+        <h3 class="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-4">Top 5 Skills / Gaps to Address</h3>
+        <ol id="gapsList" class="space-y-2"></ol>
+      </div>
+
+      <!-- Tailored Summary -->
+      <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-xs font-semibold uppercase tracking-widest text-gray-500">Tailored CV Summary</h3>
+          <button onclick="copyText('tailoredSummary')"
+            class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            Copy
+          </button>
+        </div>
+        <p id="tailoredSummary" class="text-gray-300 text-sm leading-relaxed"></p>
+      </div>
+
+      <!-- Bullet Points -->
+      <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-xs font-semibold uppercase tracking-widest text-gray-500">Tailored Experience Bullets</h3>
+          <span class="text-xs text-gray-600">Add or replace in your experience section</span>
+        </div>
+        <ul id="bulletsList" class="space-y-3"></ul>
+      </div>
+
+      <!-- Cover Letter -->
+      <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-xs font-semibold uppercase tracking-widest text-gray-500">Cover Letter</h3>
+          <button onclick="copyText('coverLetterContent')"
+            class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            Copy
+          </button>
+        </div>
+        <div id="coverLetterContent" class="space-y-4"></div>
+      </div>
+
+    </div><!-- /results -->
+  </main>
+
+  <script>
+    const form = document.getElementById('analyzeForm');
+    const cvFileInput = document.getElementById('cvFile');
+    const dropZone = document.getElementById('dropZone');
+
+    // File selection
+    cvFileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) showFileSelected(file.name);
+    });
+
+    // Drag & drop
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('border-indigo-500', 'bg-indigo-500/5');
+    });
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('border-indigo-500', 'bg-indigo-500/5');
+    });
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('border-indigo-500', 'bg-indigo-500/5');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type === 'application/pdf') {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        cvFileInput.files = dt.files;
+        showFileSelected(file.name);
+      }
+    });
+
+    function showFileSelected(name) {
+      document.getElementById('uploadPrompt').classList.add('hidden');
+      const uf = document.getElementById('uploadedFile');
+      uf.classList.remove('hidden');
+      uf.classList.add('flex');
+      document.getElementById('fileName').textContent = name;
+    }
+
+    // Form submission
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const jobDesc = document.getElementById('jobDescription').value.trim();
+      if (!jobDesc) { showError('Please paste a job description.'); return; }
+
+      const hasCv = cvFileInput.files[0];
+      const cvOnFile = {{ 'true' if cv_on_file else 'false' }};
+      if (!hasCv && !cvOnFile) {
+        showError('Please upload your CV PDF.');
+        return;
+      }
+
+      setLoading(true);
+
+      const formData = new FormData();
+      formData.append('job_description', jobDesc);
+      if (cvFileInput.files[0]) formData.append('cv', cvFileInput.files[0]);
+
+      try {
+        const res = await fetch('/analyze', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Analysis failed');
+        renderResults(data);
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    function setLoading(on) {
+      document.getElementById('loadingState').style.display = on ? 'flex' : 'none';
+      if (on) {
+        document.getElementById('results').style.display = 'none';
+        document.getElementById('errorBox').style.display = 'none';
+      }
+      document.getElementById('submitBtn').disabled = on;
+      document.getElementById('submitBtn').textContent = on ? 'Analyzing…' : 'Analyze My CV';
+    }
+
+    function showError(msg) {
+      const box = document.getElementById('errorBox');
+      document.getElementById('errorMsg').textContent = msg;
+      box.style.display = 'flex';
+      box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function renderResults(data) {
+      // Score ring animation
+      const score = Math.min(100, Math.max(0, data.fit_score));
+      const circumference = 238.76;
+      const offset = circumference - (score / 100) * circumference;
+      const ring = document.getElementById('scoreRing');
+      ring.style.strokeDashoffset = circumference; // reset
+      setTimeout(() => { ring.style.strokeDashoffset = offset; }, 50);
+
+      // Color the ring by score
+      ring.style.stroke = score >= 75 ? '#22c55e' : score >= 50 ? '#f59e0b' : '#ef4444';
+
+      document.getElementById('scoreText').textContent = score + '%';
+
+      // Reasoning
+      const rList = document.getElementById('reasoningList');
+      rList.innerHTML = (data.reasoning || []).map(r => `
+        <li class="flex items-start gap-2 text-sm text-gray-300">
+          <span class="text-indigo-400 mt-0.5 shrink-0">▸</span>
+          <span>${escHtml(r)}</span>
+        </li>`).join('');
+
+      // Gaps
+      const gList = document.getElementById('gapsList');
+      gList.innerHTML = (data.gaps || []).map((g, i) => `
+        <li class="flex items-start gap-3 text-sm">
+          <span class="w-6 h-6 rounded-full bg-red-900/40 border border-red-800/60 text-red-400 text-xs flex items-center justify-center shrink-0 font-medium">${i + 1}</span>
+          <span class="text-gray-300 pt-0.5">${escHtml(g)}</span>
+        </li>`).join('');
+
+      // Summary
+      document.getElementById('tailoredSummary').textContent = data.tailored_summary || '';
+
+      // Bullets
+      const bList = document.getElementById('bulletsList');
+      bList.innerHTML = (data.bullet_points || []).map(b => `
+        <li class="flex items-start gap-3 text-sm">
+          <span class="text-indigo-400 shrink-0 mt-0.5 font-bold">•</span>
+          <span class="text-gray-300">${escHtml(b)}</span>
+        </li>`).join('');
+
+      // Cover letter
+      const clDiv = document.getElementById('coverLetterContent');
+      clDiv.innerHTML = (data.cover_letter || []).map(p =>
+        `<p class="text-gray-300 text-sm leading-relaxed">${escHtml(p)}</p>`
+      ).join('');
+
+      // Show results
+      const resultsEl = document.getElementById('results');
+      resultsEl.style.display = 'block';
+      setTimeout(() => resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    }
+
+    async function copyText(elementId) {
+      const el = document.getElementById(elementId);
+      const text = el.innerText || el.textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+    }
+
+    function escHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

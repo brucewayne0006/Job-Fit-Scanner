@@ -1,0 +1,5 @@
+flask
+groq
+pdfplumber
+python-dotenv
+werkzeug
